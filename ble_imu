@@ -1,0 +1,2968 @@
+
+/* Copyright (c) 2014 Nordic Semiconductor. All Rights Reserved.
+ *
+ * The information contained herein is property of Nordic Semiconductor ASA.
+ * Terms and conditions of usage are described in detail in NORDIC
+ * SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT.
+ *
+ * Licensees are granted free, non-transferable use of the information. NO
+ * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
+ * the file.
+ *
+ */
+
+/**@file
+ * @defgroup spi_master_example_with_slave_main main.c
+ * @{
+ * @ingroup spi_master_example
+ *
+ * @brief SPI master example application to be used with the SPI slave example application.
+ */
+#include "math.h"
+#include <stdint.h>
+#include <string.h>
+#include "nordic_common.h"
+#include "nrf.h"
+#include "ble_hci.h"
+#include "ble_advdata.h"
+#include "ble_advertising.h"
+#include "ble_conn_params.h"
+#include "softdevice_handler.h"
+#include "app_timer.h"
+#include "app_button.h"
+#include "ble_nus.h"
+#include "app_uart.h"
+#include "app_util_platform.h"
+#include "bsp.h"
+#include "bsp_btn_ble.h"
+
+
+//spi
+#include <stdio.h>
+#include <stdbool.h>
+#include "app_error.h"
+//#include "app_util_platform.h"
+#include "nrf_delay.h"
+//#include "bsp.h"
+//#include "app_timer.h"
+#include "nrf_drv_spi.h"
+//#include "nordic_common.h"
+#include "nrf_drv_gpiote.h"
+
+volatile uint8_t DRDY = 0; 
+
+/*
+ * This example uses only one instance of the SPI master.
+ * Please make sure that only one instance of the SPI master is enabled in config file.
+ */
+
+#define APP_TIMER_PRESCALER      0                      /**< Value of the RTC1 PRESCALER register. */
+#define APP_TIMER_MAX_TIMERS     BSP_APP_TIMERS_NUMBER  /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_OP_QUEUE_SIZE  2                      /**< Size of timer operation queues. */
+
+#define DELAY_MS                 1000                /**< Timer Delay in milli-seconds. */
+
+#define TX_RX_BUF_LENGTH_CUSTOM  2                  //Added for AS3911 read register command
+#define READ_MODE    0x20
+#define WRITE_MODE   0x40
+
+
+
+// Register Read Commands
+#define LSM6DS3_ACC_GYRO_TEST_PAGE  			0X00
+#define LSM6DS3_ACC_GYRO_RAM_ACCESS  			0X01
+#define LSM6DS3_ACC_GYRO_SENSOR_SYNC_TIME  		0X04
+#define LSM6DS3_ACC_GYRO_SENSOR_SYNC_EN  		  0X05
+#define LSM6DS3_ACC_GYRO_FIFO_CTRL1  			0X06
+#define LSM6DS3_ACC_GYRO_FIFO_CTRL2  			0X07
+#define LSM6DS3_ACC_GYRO_FIFO_CTRL3  			0X08
+#define LSM6DS3_ACC_GYRO_FIFO_CTRL4  			0X09
+#define LSM6DS3_ACC_GYRO_FIFO_CTRL5  			0X0A
+#define LSM6DS3_ACC_GYRO_ORIENT_CFG_G  			0X0B
+#define LSM6DS3_ACC_GYRO_REFERENCE_G  			0X0C
+#define LSM6DS3_ACC_GYRO_INT1_CTRL  			0X0D
+#define LSM6DS3_ACC_GYRO_INT2_CTRL  			0X0E
+#define LSM6DS3_ACC_GYRO_WHO_AM_I_REG  			0X0F
+#define LSM6DS3_ACC_GYRO_CTRL1_XL  			0X10
+#define LSM6DS3_ACC_GYRO_CTRL2_G  			0X11
+#define LSM6DS3_ACC_GYRO_CTRL3_C  			0X12
+#define LSM6DS3_ACC_GYRO_CTRL4_C  			0X13
+#define LSM6DS3_ACC_GYRO_CTRL5_C  			0X14
+#define LSM6DS3_ACC_GYRO_CTRL6_G  			0X15
+#define LSM6DS3_ACC_GYRO_CTRL7_G  			0X16
+#define LSM6DS3_ACC_GYRO_CTRL8_XL  			0X17
+#define LSM6DS3_ACC_GYRO_CTRL9_XL  			0X18
+#define LSM6DS3_ACC_GYRO_CTRL10_C  			0X19
+#define LSM6DS3_ACC_GYRO_MASTER_CONFIG  		0X1A
+#define LSM6DS3_ACC_GYRO_WAKE_UP_SRC  			0X1B
+#define LSM6DS3_ACC_GYRO_TAP_SRC  			0X1C
+#define LSM6DS3_ACC_GYRO_D6D_SRC  			0X1D
+#define LSM6DS3_ACC_GYRO_STATUS_REG  			0X1E
+#define LSM6DS3_ACC_GYRO_OUT_TEMP_L  			0X20
+#define LSM6DS3_ACC_GYRO_OUT_TEMP_H  			0X21
+#define LSM6DS3_ACC_GYRO_OUTX_L_G  			0X22
+#define LSM6DS3_ACC_GYRO_OUTX_H_G  			0X23
+#define LSM6DS3_ACC_GYRO_OUTY_L_G  			0X24
+#define LSM6DS3_ACC_GYRO_OUTY_H_G  			0X25
+#define LSM6DS3_ACC_GYRO_OUTZ_L_G  			0X26
+#define LSM6DS3_ACC_GYRO_OUTZ_H_G  			0X27
+#define LSM6DS3_ACC_GYRO_OUTX_L_XL  			0X28
+#define LSM6DS3_ACC_GYRO_OUTX_H_XL  			0X29
+#define LSM6DS3_ACC_GYRO_OUTY_L_XL  			0X2A
+#define LSM6DS3_ACC_GYRO_OUTY_H_XL  			0X2B
+#define LSM6DS3_ACC_GYRO_OUTZ_L_XL  			0X2C
+#define LSM6DS3_ACC_GYRO_OUTZ_H_XL  			0X2D
+#define LSM6DS3_ACC_GYRO_SENSORHUB1_REG  		0X2E
+#define LSM6DS3_ACC_GYRO_SENSORHUB2_REG  		0X2F
+#define LSM6DS3_ACC_GYRO_SENSORHUB3_REG  		0X30
+#define LSM6DS3_ACC_GYRO_SENSORHUB4_REG  		0X31
+#define LSM6DS3_ACC_GYRO_SENSORHUB5_REG  		0X32
+#define LSM6DS3_ACC_GYRO_SENSORHUB6_REG  		0X33
+#define LSM6DS3_ACC_GYRO_SENSORHUB7_REG  		0X34
+#define LSM6DS3_ACC_GYRO_SENSORHUB8_REG  		0X35
+#define LSM6DS3_ACC_GYRO_SENSORHUB9_REG  		0X36
+#define LSM6DS3_ACC_GYRO_SENSORHUB10_REG  		0X37
+#define LSM6DS3_ACC_GYRO_SENSORHUB11_REG  		0X38
+#define LSM6DS3_ACC_GYRO_SENSORHUB12_REG  		0X39
+#define LSM6DS3_ACC_GYRO_FIFO_STATUS1  			0X3A
+#define LSM6DS3_ACC_GYRO_FIFO_STATUS2  			0X3B
+#define LSM6DS3_ACC_GYRO_FIFO_STATUS3  			0X3C
+#define LSM6DS3_ACC_GYRO_FIFO_STATUS4  			0X3D
+#define LSM6DS3_ACC_GYRO_FIFO_DATA_OUT_L  		0X3E
+#define LSM6DS3_ACC_GYRO_FIFO_DATA_OUT_H  		0X3F
+#define LSM6DS3_ACC_GYRO_TIMESTAMP0_REG  		0X40
+#define LSM6DS3_ACC_GYRO_TIMESTAMP1_REG  		0X41
+#define LSM6DS3_ACC_GYRO_TIMESTAMP2_REG  		0X42
+#define LSM6DS3_ACC_GYRO_STEP_COUNTER_L  		0X4B
+#define LSM6DS3_ACC_GYRO_STEP_COUNTER_H  		0X4C
+#define LSM6DS3_ACC_GYRO_FUNC_SRC  			0X53
+#define LSM6DS3_ACC_GYRO_TAP_CFG1  			0X58
+#define LSM6DS3_ACC_GYRO_TAP_THS_6D  			0X59
+#define LSM6DS3_ACC_GYRO_INT_DUR2  			0X5A
+#define LSM6DS3_ACC_GYRO_WAKE_UP_THS  			0X5B
+#define LSM6DS3_ACC_GYRO_WAKE_UP_DUR  			0X5C
+#define LSM6DS3_ACC_GYRO_FREE_FALL  			0X5D
+#define LSM6DS3_ACC_GYRO_MD1_CFG  			0X5E
+#define LSM6DS3_ACC_GYRO_MD2_CFG  			0X5F
+
+/************** Access Device RAM  *******************/
+#define LSM6DS3_ACC_GYRO_ADDR0_TO_RW_RAM         0x62
+#define LSM6DS3_ACC_GYRO_ADDR1_TO_RW_RAM         0x63
+#define LSM6DS3_ACC_GYRO_DATA_TO_WR_RAM          0x64
+#define LSM6DS3_ACC_GYRO_DATA_RD_FROM_RAM        0x65
+
+#define LSM6DS3_ACC_GYRO_RAM_SIZE                4096
+
+/************** Embedded functions register mapping  *******************/
+#define LSM6DS3_ACC_GYRO_SLV0_ADD                     0x02
+#define LSM6DS3_ACC_GYRO_SLV0_SUBADD                  0x03
+#define LSM6DS3_ACC_GYRO_SLAVE0_CONFIG                0x04
+#define LSM6DS3_ACC_GYRO_SLV1_ADD                     0x05
+#define LSM6DS3_ACC_GYRO_SLV1_SUBADD                  0x06
+#define LSM6DS3_ACC_GYRO_SLAVE1_CONFIG                0x07
+#define LSM6DS3_ACC_GYRO_SLV2_ADD                     0x08
+#define LSM6DS3_ACC_GYRO_SLV2_SUBADD                  0x09
+#define LSM6DS3_ACC_GYRO_SLAVE2_CONFIG                0x0A
+#define LSM6DS3_ACC_GYRO_SLV3_ADD                     0x0B
+#define LSM6DS3_ACC_GYRO_SLV3_SUBADD                  0x0C
+#define LSM6DS3_ACC_GYRO_SLAVE3_CONFIG                0x0D
+#define LSM6DS3_ACC_GYRO_DATAWRITE_SRC_MODE_SUB_SLV0  0x0E
+#define LSM6DS3_ACC_GYRO_CONFIG_PEDO_THS_MIN          0x0F
+#define LSM6DS3_ACC_GYRO_CONFIG_TILT_IIR              0x10
+#define LSM6DS3_ACC_GYRO_CONFIG_TILT_ACOS             0x11
+#define LSM6DS3_ACC_GYRO_CONFIG_TILT_WTIME            0x12
+#define LSM6DS3_ACC_GYRO_SM_STEP_THS                  0x13
+#define LSM6DS3_ACC_GYRO_MAG_SI_XX                    0x24
+#define LSM6DS3_ACC_GYRO_MAG_SI_XY                    0x25
+#define LSM6DS3_ACC_GYRO_MAG_SI_XZ                    0x26
+#define LSM6DS3_ACC_GYRO_MAG_SI_YX                    0x27
+#define LSM6DS3_ACC_GYRO_MAG_SI_YY                    0x28
+#define LSM6DS3_ACC_GYRO_MAG_SI_YZ                    0x29
+#define LSM6DS3_ACC_GYRO_MAG_SI_ZX                    0x2A
+#define LSM6DS3_ACC_GYRO_MAG_SI_ZY                    0x2B
+#define LSM6DS3_ACC_GYRO_MAG_SI_ZZ                    0x2C
+#define LSM6DS3_ACC_GYRO_MAG_OFFX_L                   0x2D
+#define LSM6DS3_ACC_GYRO_MAG_OFFX_H                   0x2E
+#define LSM6DS3_ACC_GYRO_MAG_OFFY_L                   0x2F
+#define LSM6DS3_ACC_GYRO_MAG_OFFY_H                   0x30
+#define LSM6DS3_ACC_GYRO_MAG_OFFZ_L                   0x31
+#define LSM6DS3_ACC_GYRO_MAG_OFFZ_H                   0x32
+
+
+
+#define FLASH_PAGE    0x40
+
+/*******************************************************************************
+* Register      : RAM_ACCESS
+* Address       : 0X01
+* Bit Group Name: PROG_RAM1
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PROG_RAM1_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PROG_RAM1_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_PROG_RAM1_t;
+
+/*******************************************************************************
+* Register      : RAM_ACCESS
+* Address       : 0X01
+* Bit Group Name: CUSTOMROM1
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_CUSTOMROM1_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_CUSTOMROM1_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_CUSTOMROM1_t;
+
+/*******************************************************************************
+* Register      : RAM_ACCESS
+* Address       : 0X01
+* Bit Group Name: RAM_PAGE
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_RAM_PAGE_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_RAM_PAGE_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_RAM_PAGE_t;
+
+/*******************************************************************************
+* Register      : SENSOR_SYNC_TIME
+* Address       : 0X04
+* Bit Group Name: TPH
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_TPH_MASK  	0xFF
+#define  	LSM6DS3_ACC_GYRO_TPH_POSITION  	0
+
+/*******************************************************************************
+* Register      : SENSOR_SYNC_EN
+* Address       : 0X05
+* Bit Group Name: SYNC_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SYNC_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SYNC_EN_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_SYNC_EN_t;
+
+/*******************************************************************************
+* Register      : SENSOR_SYNC_EN
+* Address       : 0X05
+* Bit Group Name: HP_RST
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_HP_RST_RST_OFF 		 = 0x00,
+	LSM6DS3_ACC_GYRO_HP_RST_RST_ON 		 = 0x02,
+} LSM6DS3_ACC_GYRO_HP_RST_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL1
+* Address       : 0X06
+* Bit Group Name: WTM_FIFO
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_WTM_FIFO_CTRL1_MASK  	0xFF
+#define  	LSM6DS3_ACC_GYRO_WTM_FIFO_CTRL1_POSITION  	0
+#define  	LSM6DS3_ACC_GYRO_WTM_FIFO_CTRL2_MASK  	0x0F
+#define  	LSM6DS3_ACC_GYRO_WTM_FIFO_CTRL2_POSITION  	0
+
+/*******************************************************************************
+* Register      : FIFO_CTRL2
+* Address       : 0X07
+* Bit Group Name: TIM_PEDO_FIFO_DRDY
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TIM_PEDO_FIFO_DRDY_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TIM_PEDO_FIFO_DRDY_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_TIM_PEDO_FIFO_DRDY_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL2
+* Address       : 0X07
+* Bit Group Name: TIM_PEDO_FIFO_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TIM_PEDO_FIFO_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TIM_PEDO_FIFO_EN_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_TIM_PEDO_FIFO_EN_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL3
+* Address       : 0X08
+* Bit Group Name: DEC_FIFO_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DATA_NOT_IN_FIFO 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_NO_DECIMATION 		 = 0x01,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DECIMATION_BY_2 		 = 0x02,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DECIMATION_BY_3 		 = 0x03,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DECIMATION_BY_4 		 = 0x04,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DECIMATION_BY_8 		 = 0x05,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DECIMATION_BY_16 		 = 0x06,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_XL_DECIMATION_BY_32 		 = 0x07,
+} LSM6DS3_ACC_GYRO_DEC_FIFO_XL_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL3
+* Address       : 0X08
+* Bit Group Name: DEC_FIFO_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DATA_NOT_IN_FIFO 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_NO_DECIMATION 		 = 0x08,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DECIMATION_BY_2 		 = 0x10,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DECIMATION_BY_3 		 = 0x18,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DECIMATION_BY_4 		 = 0x20,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DECIMATION_BY_8 		 = 0x28,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DECIMATION_BY_16 		 = 0x30,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_G_DECIMATION_BY_32 		 = 0x38,
+} LSM6DS3_ACC_GYRO_DEC_FIFO_G_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL4
+* Address       : 0X09
+* Bit Group Name: DEC_FIFO_SLV0
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DATA_NOT_IN_FIFO 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_NO_DECIMATION 		 = 0x01,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DECIMATION_BY_2 		 = 0x02,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DECIMATION_BY_3 		 = 0x03,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DECIMATION_BY_4 		 = 0x04,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DECIMATION_BY_8 		 = 0x05,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DECIMATION_BY_16 		 = 0x06,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_DECIMATION_BY_32 		 = 0x07,
+} LSM6DS3_ACC_GYRO_DEC_FIFO_SLV0_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL4
+* Address       : 0X09
+* Bit Group Name: DEC_FIFO_SLV1
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DATA_NOT_IN_FIFO 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_NO_DECIMATION 		 = 0x08,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DECIMATION_BY_2 		 = 0x10,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DECIMATION_BY_3 		 = 0x18,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DECIMATION_BY_4 		 = 0x20,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DECIMATION_BY_8 		 = 0x28,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DECIMATION_BY_16 		 = 0x30,
+	LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_DECIMATION_BY_32 		 = 0x38,
+} LSM6DS3_ACC_GYRO_DEC_FIFO_SLV1_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL4
+* Address       : 0X09
+* Bit Group Name: HI_DATA_ONLY
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_HI_DATA_ONLY_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_HI_DATA_ONLY_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_HI_DATA_ONLY_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL5
+* Address       : 0X0A
+* Bit Group Name: FIFO_MODE
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FIFO_MODE_BYPASS 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_FIFO 		 = 0x01,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_STREAM 		 = 0x02,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_STF 		 = 0x03,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_BTS 		 = 0x04,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_DYN_STREAM 		 = 0x05,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_DYN_STREAM_2 		 = 0x06,
+	LSM6DS3_ACC_GYRO_FIFO_MODE_BTF 		 = 0x07,
+} LSM6DS3_ACC_GYRO_FIFO_MODE_t;
+
+/*******************************************************************************
+* Register      : FIFO_CTRL5
+* Address       : 0X0A
+* Bit Group Name: ODR_FIFO
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ODR_FIFO_10Hz 		 = 0x08,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_25Hz 		 = 0x10,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_50Hz 		 = 0x18,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_100Hz 		 = 0x20,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_200Hz 		 = 0x28,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_400Hz 		 = 0x30,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_800Hz 		 = 0x38,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_1600Hz 		 = 0x40,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_3300Hz 		 = 0x48,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_6600Hz 		 = 0x50,
+	LSM6DS3_ACC_GYRO_ODR_FIFO_13300Hz 		 = 0x58,
+} LSM6DS3_ACC_GYRO_ODR_FIFO_t;
+
+/*******************************************************************************
+* Register      : ORIENT_CFG_G
+* Address       : 0X0B
+* Bit Group Name: ORIENT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ORIENT_XYZ 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ORIENT_XZY 		 = 0x01,
+	LSM6DS3_ACC_GYRO_ORIENT_YXZ 		 = 0x02,
+	LSM6DS3_ACC_GYRO_ORIENT_YZX 		 = 0x03,
+	LSM6DS3_ACC_GYRO_ORIENT_ZXY 		 = 0x04,
+	LSM6DS3_ACC_GYRO_ORIENT_ZYX 		 = 0x05,
+} LSM6DS3_ACC_GYRO_ORIENT_t;
+
+/*******************************************************************************
+* Register      : ORIENT_CFG_G
+* Address       : 0X0B
+* Bit Group Name: SIGN_Z_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIGN_Z_G_POSITIVE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIGN_Z_G_NEGATIVE 		 = 0x08,
+} LSM6DS3_ACC_GYRO_SIGN_Z_G_t;
+
+/*******************************************************************************
+* Register      : ORIENT_CFG_G
+* Address       : 0X0B
+* Bit Group Name: SIGN_Y_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIGN_Y_G_POSITIVE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIGN_Y_G_NEGATIVE 		 = 0x10,
+} LSM6DS3_ACC_GYRO_SIGN_Y_G_t;
+
+/*******************************************************************************
+* Register      : ORIENT_CFG_G
+* Address       : 0X0B
+* Bit Group Name: SIGN_X_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIGN_X_G_POSITIVE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIGN_X_G_NEGATIVE 		 = 0x20,
+} LSM6DS3_ACC_GYRO_SIGN_X_G_t;
+
+/*******************************************************************************
+* Register      : REFERENCE_G
+* Address       : 0X0C
+* Bit Group Name: REF_G
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_REF_G_MASK  	0xFF
+#define  	LSM6DS3_ACC_GYRO_REF_G_POSITION  	0
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_DRDY_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_DRDY_XL_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_DRDY_XL_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_INT1_DRDY_XL_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_DRDY_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_DRDY_G_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_DRDY_G_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_INT1_DRDY_G_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_BOOT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_BOOT_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_BOOT_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_INT1_BOOT_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_FTH
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_FTH_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_FTH_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_INT1_FTH_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_OVR
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_OVR_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_OVR_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_INT1_OVR_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_FSS5
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_FSS5_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_FSS5_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_INT1_FSS5_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_SIGN_MOT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_SIGN_MOT_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_SIGN_MOT_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_INT1_SIGN_MOT_t;
+
+/*******************************************************************************
+* Register      : INT1_CTRL
+* Address       : 0X0D
+* Bit Group Name: INT1_PEDO
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_PEDO_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_PEDO_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_INT1_PEDO_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_DRDY_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_DRDY_XL_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_DRDY_XL_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_INT2_DRDY_XL_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_DRDY_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_DRDY_G_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_DRDY_G_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_INT2_DRDY_G_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_FTH
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_FTH_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_FTH_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_INT2_FTH_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_OVR
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_OVR_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_OVR_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_INT2_OVR_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_FSS5
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_FSS5_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_FSS5_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_INT2_FSS5_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_SIGN_MOT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_SIGN_MOT_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_SIGN_MOT_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_INT2_SIGN_MOT_t;
+
+/*******************************************************************************
+* Register      : INT2_CTRL
+* Address       : 0X0E
+* Bit Group Name: INT2_PEDO
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_PEDO_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_PEDO_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_INT2_PEDO_t;
+
+/*******************************************************************************
+* Register      : WHO_AM_I
+* Address       : 0X0F
+* Bit Group Name: WHO_AM_I_BIT
+* Permission    : RO
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_WHO_AM_I_BIT_MASK  	0xFF
+#define  	LSM6DS3_ACC_GYRO_WHO_AM_I_BIT_POSITION  	0
+
+/*******************************************************************************
+* Register      : CTRL1_XL
+* Address       : 0X10
+* Bit Group Name: BW_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_BW_XL_400Hz 		 = 0x00,
+	LSM6DS3_ACC_GYRO_BW_XL_200Hz 		 = 0x01,
+	LSM6DS3_ACC_GYRO_BW_XL_100Hz 		 = 0x02,
+	LSM6DS3_ACC_GYRO_BW_XL_50Hz 		 = 0x03,
+} LSM6DS3_ACC_GYRO_BW_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL1_XL
+* Address       : 0X10
+* Bit Group Name: FS_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FS_XL_2g 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FS_XL_16g 		 = 0x04,
+	LSM6DS3_ACC_GYRO_FS_XL_4g 		 = 0x08,
+	LSM6DS3_ACC_GYRO_FS_XL_8g 		 = 0x0C,
+} LSM6DS3_ACC_GYRO_FS_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL1_XL
+* Address       : 0X10
+* Bit Group Name: ODR_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ODR_XL_POWER_DOWN 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ODR_XL_13Hz 		         = 0x10,
+	LSM6DS3_ACC_GYRO_ODR_XL_26Hz 		         = 0x20,
+	LSM6DS3_ACC_GYRO_ODR_XL_52Hz 		         = 0x30,
+	LSM6DS3_ACC_GYRO_ODR_XL_104Hz 		 = 0x40,
+	LSM6DS3_ACC_GYRO_ODR_XL_208Hz 		 = 0x50,
+	LSM6DS3_ACC_GYRO_ODR_XL_416Hz 		 = 0x60,
+	LSM6DS3_ACC_GYRO_ODR_XL_833Hz 		 = 0x70,
+	LSM6DS3_ACC_GYRO_ODR_XL_1660Hz 		 = 0x80,
+	LSM6DS3_ACC_GYRO_ODR_XL_3330Hz 		 = 0x90,
+	LSM6DS3_ACC_GYRO_ODR_XL_6660Hz 		 = 0xA0,
+	LSM6DS3_ACC_GYRO_ODR_XL_13330Hz 		 = 0xB0,
+} LSM6DS3_ACC_GYRO_ODR_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL2_G
+* Address       : 0X11
+* Bit Group Name: FS_125
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FS_125_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FS_125_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_FS_125_t;
+
+/*******************************************************************************
+* Register      : CTRL2_G
+* Address       : 0X11
+* Bit Group Name: FS_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FS_G_245dps 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FS_G_500dps 		 = 0x04,
+	LSM6DS3_ACC_GYRO_FS_G_1000dps 		 = 0x08,
+	LSM6DS3_ACC_GYRO_FS_G_2000dps 		 = 0x0C,
+} LSM6DS3_ACC_GYRO_FS_G_t;
+
+/*******************************************************************************
+* Register      : CTRL2_G
+* Address       : 0X11
+* Bit Group Name: ODR_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ODR_G_POWER_DOWN 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ODR_G_13Hz 		 = 0x10,
+	LSM6DS3_ACC_GYRO_ODR_G_26Hz 		 = 0x20,
+	LSM6DS3_ACC_GYRO_ODR_G_52Hz 		 = 0x30,
+	LSM6DS3_ACC_GYRO_ODR_G_104Hz 		 = 0x40,
+	LSM6DS3_ACC_GYRO_ODR_G_208Hz 		 = 0x50,
+	LSM6DS3_ACC_GYRO_ODR_G_416Hz 		 = 0x60,
+	LSM6DS3_ACC_GYRO_ODR_G_833Hz 		 = 0x70,
+	LSM6DS3_ACC_GYRO_ODR_G_1660Hz 		 = 0x80,
+} LSM6DS3_ACC_GYRO_ODR_G_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: SW_RESET
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SW_RESET_NORMAL_MODE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SW_RESET_RESET_DEVICE 		 = 0x01,
+} LSM6DS3_ACC_GYRO_SW_RESET_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: BLE
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_BLE_LSB 		 = 0x00,
+	LSM6DS3_ACC_GYRO_BLE_MSB 		 = 0x02,
+} LSM6DS3_ACC_GYRO_BLE_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: IF_INC
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_IF_INC_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_IF_INC_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_IF_INC_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: SIM
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIM_4_WIRE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIM_3_WIRE 		 = 0x08,
+} LSM6DS3_ACC_GYRO_SIM_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: PP_OD
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PP_OD_PUSH_PULL 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PP_OD_OPEN_DRAIN 		 = 0x10,
+} LSM6DS3_ACC_GYRO_PP_OD_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: INT_ACT_LEVEL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT_ACT_LEVEL_ACTIVE_HI 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT_ACT_LEVEL_ACTIVE_LO 		 = 0x20,
+} LSM6DS3_ACC_GYRO_INT_ACT_LEVEL_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: BDU
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_BDU_CONTINUOS 		 = 0x00,
+	LSM6DS3_ACC_GYRO_BDU_BLOCK_UPDATE 		 = 0x40,
+} LSM6DS3_ACC_GYRO_BDU_t;
+
+/*******************************************************************************
+* Register      : CTRL3_C
+* Address       : 0X12
+* Bit Group Name: BOOT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_BOOT_NORMAL_MODE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_BOOT_REBOOT_MODE 		 = 0x80,
+} LSM6DS3_ACC_GYRO_BOOT_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: STOP_ON_FTH
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_STOP_ON_FTH_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_STOP_ON_FTH_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_STOP_ON_FTH_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: MODE3_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_MODE3_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_MODE3_EN_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_MODE3_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: I2C_DISABLE
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_I2C_DISABLE_I2C_AND_SPI 		 = 0x00,
+	LSM6DS3_ACC_GYRO_I2C_DISABLE_SPI_ONLY 		 = 0x04,
+} LSM6DS3_ACC_GYRO_I2C_DISABLE_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: DRDY_MSK
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DRDY_MSK_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DRDY_MSK_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_DRDY_MSK_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: FIFO_TEMP_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FIFO_TEMP_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FIFO_TEMP_EN_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_FIFO_TEMP_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: INT2_ON_INT1
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_ON_INT1_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_ON_INT1_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_INT2_ON_INT1_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: SLEEP_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SLEEP_G_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SLEEP_G_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_SLEEP_G_t;
+
+/*******************************************************************************
+* Register      : CTRL4_C
+* Address       : 0X13
+* Bit Group Name: BW_SCAL_ODR
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_BW_SCAL_ODR_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_BW_SCAL_ODR_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_BW_SCAL_ODR_t;
+
+/*******************************************************************************
+* Register      : CTRL5_C
+* Address       : 0X14
+* Bit Group Name: ST_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ST_XL_NORMAL_MODE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ST_XL_POS_SIGN_TEST 		 = 0x01,
+	LSM6DS3_ACC_GYRO_ST_XL_NEG_SIGN_TEST 		 = 0x02,
+	LSM6DS3_ACC_GYRO_ST_XL_NA 		 = 0x03,
+} LSM6DS3_ACC_GYRO_ST_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL5_C
+* Address       : 0X14
+* Bit Group Name: ST_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ST_G_NORMAL_MODE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ST_G_POS_SIGN_TEST 		 = 0x04,
+	LSM6DS3_ACC_GYRO_ST_G_NA 		 = 0x08,
+	LSM6DS3_ACC_GYRO_ST_G_NEG_SIGN_TEST 		 = 0x0C,
+} LSM6DS3_ACC_GYRO_ST_G_t;
+
+/*******************************************************************************
+* Register      : CTRL6_G
+* Address       : 0X15
+* Bit Group Name: LP_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_LP_XL_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_LP_XL_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_LP_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL6_G
+* Address       : 0X15
+* Bit Group Name: DEN_LVL2_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEN_LVL2_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEN_LVL2_EN_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_DEN_LVL2_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL6_G
+* Address       : 0X15
+* Bit Group Name: DEN_LVL_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEN_LVL_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEN_LVL_EN_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_DEN_LVL_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL6_G
+* Address       : 0X15
+* Bit Group Name: DEN_EDGE_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DEN_EDGE_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DEN_EDGE_EN_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_DEN_EDGE_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL7_G
+* Address       : 0X16
+* Bit Group Name: HPM_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_HPM_G_NORMAL_MODE 		 = 0x00,
+	LSM6DS3_ACC_GYRO_HPM_G_REF_SIGNAL 		 = 0x10,
+	LSM6DS3_ACC_GYRO_HPM_G_NORMAL_MODE_2 		 = 0x20,
+	LSM6DS3_ACC_GYRO_HPM_G_AUTO_RESET_ON_INT 		 = 0x30,
+} LSM6DS3_ACC_GYRO_HPM_G_t;
+
+/*******************************************************************************
+* Register      : CTRL7_G
+* Address       : 0X16
+* Bit Group Name: HP_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_HP_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_HP_EN_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_HP_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL7_G
+* Address       : 0X16
+* Bit Group Name: LP_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_LP_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_LP_EN_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_LP_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL8_XL
+* Address       : 0X17
+* Bit Group Name: FDS
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FDS_FILTER_OFF 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FDS_FILTER_ON 		 = 0x04,
+} LSM6DS3_ACC_GYRO_FDS_t;
+
+/*******************************************************************************
+* Register      : CTRL9_XL
+* Address       : 0X18
+* Bit Group Name: XEN_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_XEN_XL_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_XEN_XL_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_XEN_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL9_XL
+* Address       : 0X18
+* Bit Group Name: YEN_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_YEN_XL_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_YEN_XL_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_YEN_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL9_XL
+* Address       : 0X18
+* Bit Group Name: ZEN_XL
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ZEN_XL_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ZEN_XL_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_ZEN_XL_t;
+
+/*******************************************************************************
+* Register      : CTRL10_C
+* Address       : 0X19
+* Bit Group Name: SIGN_MOTION_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIGN_MOTION_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIGN_MOTION_EN_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_SIGN_MOTION_EN_t;
+
+/*******************************************************************************
+* Register      : CTRL10_C
+* Address       : 0X19
+* Bit Group Name: PEDO_RST_STEP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PEDO_RST_STEP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PEDO_RST_STEP_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_PEDO_RST_STEP_t;
+
+/*******************************************************************************
+* Register      : CTRL10_C
+* Address       : 0X19
+* Bit Group Name: XEN_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_XEN_G_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_XEN_G_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_XEN_G_t;
+
+/*******************************************************************************
+* Register      : CTRL10_C
+* Address       : 0X19
+* Bit Group Name: YEN_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_YEN_G_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_YEN_G_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_YEN_G_t;
+
+/*******************************************************************************
+* Register      : CTRL10_C
+* Address       : 0X19
+* Bit Group Name: ZEN_G
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_ZEN_G_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_ZEN_G_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_ZEN_G_t;
+
+/*******************************************************************************
+* Register      : CTRL10_C
+* Address       : 0X19
+* Bit Group Name: FUNC_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FUNC_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FUNC_EN_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_FUNC_EN_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: MASTER_ON
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_MASTER_ON_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_MASTER_ON_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_MASTER_ON_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: IRON_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_IRON_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_IRON_EN_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_IRON_EN_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: PASS_THRU_MODE
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PASS_THRU_MODE_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PASS_THRU_MODE_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_PASS_THRU_MODE_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: PULL_UP_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PULL_UP_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PULL_UP_EN_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_PULL_UP_EN_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: START_CONFIG
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_START_CONFIG_XL_G_DRDY 		 = 0x00,
+	LSM6DS3_ACC_GYRO_START_CONFIG_EXT_INT2 		 = 0x10,
+} LSM6DS3_ACC_GYRO_START_CONFIG_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: DATA_VAL_SEL_FIFO
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DATA_VAL_SEL_FIFO_XL_G_DRDY 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DATA_VAL_SEL_FIFO_SHUB_DRDY 		 = 0x40,
+} LSM6DS3_ACC_GYRO_DATA_VAL_SEL_FIFO_t;
+
+/*******************************************************************************
+* Register      : MASTER_CONFIG
+* Address       : 0X1A
+* Bit Group Name: DRDY_ON_INT1
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DRDY_ON_INT1_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DRDY_ON_INT1_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_DRDY_ON_INT1_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_SRC
+* Address       : 0X1B
+* Bit Group Name: Z_WU
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_Z_WU_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_Z_WU_DETECTED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_Z_WU_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_SRC
+* Address       : 0X1B
+* Bit Group Name: Y_WU
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_Y_WU_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_Y_WU_DETECTED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_Y_WU_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_SRC
+* Address       : 0X1B
+* Bit Group Name: X_WU
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_X_WU_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_X_WU_DETECTED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_X_WU_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_SRC
+* Address       : 0X1B
+* Bit Group Name: WU_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_WU_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_WU_EV_STATUS_DETECTED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_WU_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_SRC
+* Address       : 0X1B
+* Bit Group Name: SLEEP_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SLEEP_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SLEEP_EV_STATUS_DETECTED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_SLEEP_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_SRC
+* Address       : 0X1B
+* Bit Group Name: FF_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FF_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FF_EV_STATUS_DETECTED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_FF_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: Z_TAP
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_Z_TAP_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_Z_TAP_DETECTED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_Z_TAP_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: Y_TAP
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_Y_TAP_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_Y_TAP_DETECTED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_Y_TAP_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: X_TAP
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_X_TAP_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_X_TAP_DETECTED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_X_TAP_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: TAP_SIGN
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TAP_SIGN_POS_SIGN 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TAP_SIGN_NEG_SIGN 		 = 0x08,
+} LSM6DS3_ACC_GYRO_TAP_SIGN_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: DOUBLE_TAP_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DOUBLE_TAP_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DOUBLE_TAP_EV_STATUS_DETECTED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_DOUBLE_TAP_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: SINGLE_TAP_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SINGLE_TAP_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SINGLE_TAP_EV_STATUS_DETECTED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_SINGLE_TAP_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : TAP_SRC
+* Address       : 0X1C
+* Bit Group Name: TAP_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TAP_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TAP_EV_STATUS_DETECTED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_TAP_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: DSD_XL
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DSD_XL_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DSD_XL_DETECTED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_DSD_XL_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: DSD_XH
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DSD_XH_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DSD_XH_DETECTED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_DSD_XH_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: DSD_YL
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DSD_YL_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DSD_YL_DETECTED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_DSD_YL_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: DSD_YH
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DSD_YH_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DSD_YH_DETECTED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_DSD_YH_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: DSD_ZL
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DSD_ZL_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DSD_ZL_DETECTED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_DSD_ZL_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: DSD_ZH
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_DSD_ZH_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_DSD_ZH_DETECTED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_DSD_ZH_t;
+
+/*******************************************************************************
+* Register      : D6D_SRC
+* Address       : 0X1D
+* Bit Group Name: D6D_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_D6D_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_D6D_EV_STATUS_DETECTED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_D6D_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : STATUS_REG
+* Address       : 0X1E
+* Bit Group Name: XLDA
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_XLDA_NO_DATA_AVAIL 		 = 0x00,
+	LSM6DS3_ACC_GYRO_XLDA_DATA_AVAIL 		 = 0x01,
+} LSM6DS3_ACC_GYRO_XLDA_t;
+
+/*******************************************************************************
+* Register      : STATUS_REG
+* Address       : 0X1E
+* Bit Group Name: GDA
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_GDA_NO_DATA_AVAIL 		 = 0x00,
+	LSM6DS3_ACC_GYRO_GDA_DATA_AVAIL 		 = 0x02,
+} LSM6DS3_ACC_GYRO_GDA_t;
+
+/*******************************************************************************
+* Register      : STATUS_REG
+* Address       : 0X1E
+* Bit Group Name: EV_BOOT
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_EV_BOOT_NO_BOOT_RUNNING 		 = 0x00,
+	LSM6DS3_ACC_GYRO_EV_BOOT_BOOT_IS_RUNNING 		 = 0x08,
+} LSM6DS3_ACC_GYRO_EV_BOOT_t;
+
+/*******************************************************************************
+* Register      : FIFO_STATUS1
+* Address       : 0X3A
+* Bit Group Name: DIFF_FIFO
+* Permission    : RO
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_DIFF_FIFO_STATUS1_MASK  	0xFF
+#define  	LSM6DS3_ACC_GYRO_DIFF_FIFO_STATUS1_POSITION  	0
+#define  	LSM6DS3_ACC_GYRO_DIFF_FIFO_STATUS2_MASK  0xF
+#define  	LSM6DS3_ACC_GYRO_DIFF_FIFO_STATUS2_POSITION  	0
+
+/*******************************************************************************
+* Register      : FIFO_STATUS2
+* Address       : 0X3B
+* Bit Group Name: FIFO_EMPTY
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FIFO_EMPTY_FIFO_NOT_EMPTY 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FIFO_EMPTY_FIFO_EMPTY 		 = 0x10,
+} LSM6DS3_ACC_GYRO_FIFO_EMPTY_t;
+
+/*******************************************************************************
+* Register      : FIFO_STATUS2
+* Address       : 0X3B
+* Bit Group Name: FIFO_FULL
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FIFO_FULL_FIFO_NOT_FULL 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FIFO_FULL_FIFO_FULL 		 = 0x20,
+} LSM6DS3_ACC_GYRO_FIFO_FULL_t;
+
+/*******************************************************************************
+* Register      : FIFO_STATUS2
+* Address       : 0X3B
+* Bit Group Name: OVERRUN
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_OVERRUN_NO_OVERRUN 		 = 0x00,
+	LSM6DS3_ACC_GYRO_OVERRUN_OVERRUN 		 = 0x40,
+} LSM6DS3_ACC_GYRO_OVERRUN_t;
+
+/*******************************************************************************
+* Register      : FIFO_STATUS2
+* Address       : 0X3B
+* Bit Group Name: WTM
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_WTM_BELOW_WTM 		 = 0x00,
+	LSM6DS3_ACC_GYRO_WTM_ABOVE_OR_EQUAL_WTM 		 = 0x80,
+} LSM6DS3_ACC_GYRO_WTM_t;
+
+/*******************************************************************************
+* Register      : FIFO_STATUS3
+* Address       : 0X3C
+* Bit Group Name: FIFO_PATTERN
+* Permission    : RO
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_FIFO_STATUS3_PATTERN_MASK  	0xFF
+#define  	LSM6DS3_ACC_GYRO_FIFO_STATUS3_PATTERN_POSITION  	0
+#define  	LSM6DS3_ACC_GYRO_FIFO_STATUS4_PATTERN_MASK  	0x03
+#define  	LSM6DS3_ACC_GYRO_FIFO_STATUS4_PATTERN_POSITION  	0
+
+/*******************************************************************************
+* Register      : FUNC_SRC
+* Address       : 0X53
+* Bit Group Name: SENS_HUB_END
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SENS_HUB_END_STILL_ONGOING 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SENS_HUB_END_OP_COMPLETED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_SENS_HUB_END_t;
+
+/*******************************************************************************
+* Register      : FUNC_SRC
+* Address       : 0X53
+* Bit Group Name: SOFT_IRON_END
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SOFT_IRON_END_NOT_COMPLETED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SOFT_IRON_END_COMPLETED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_SOFT_IRON_END_t;
+
+/*******************************************************************************
+* Register      : FUNC_SRC
+* Address       : 0X53
+* Bit Group Name: PEDO_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PEDO_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PEDO_EV_STATUS_DETECTED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_PEDO_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : FUNC_SRC
+* Address       : 0X53
+* Bit Group Name: TILT_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TILT_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TILT_EV_STATUS_DETECTED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_TILT_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : FUNC_SRC
+* Address       : 0X53
+* Bit Group Name: SIGN_MOT_EV_STATUS
+* Permission    : RO
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIGN_MOT_EV_STATUS_NOT_DETECTED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIGN_MOT_EV_STATUS_DETECTED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_SIGN_MOT_EV_STATUS_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: LIR
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_LIR_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_LIR_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_LIR_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: TAP_Z_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TAP_Z_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TAP_Z_EN_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_TAP_Z_EN_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: TAP_Y_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TAP_Y_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TAP_Y_EN_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_TAP_Y_EN_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: TAP_X_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TAP_X_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TAP_X_EN_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_TAP_X_EN_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: TILT_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TILT_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TILT_EN_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_TILT_EN_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: PEDO_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_PEDO_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_PEDO_EN_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_PEDO_EN_t;
+
+/*******************************************************************************
+* Register      : TAP_CFG1
+* Address       : 0X58
+* Bit Group Name: TIMER_EN
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TIMER_EN_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TIMER_EN_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_TIMER_EN_t;
+
+/*******************************************************************************
+* Register      : TAP_THS_6D
+* Address       : 0X59
+* Bit Group Name: TAP_THS
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_TAP_THS_MASK  	0x1F
+#define  	LSM6DS3_ACC_GYRO_TAP_THS_POSITION  	0
+
+/*******************************************************************************
+* Register      : TAP_THS_6D
+* Address       : 0X59
+* Bit Group Name: SIXD_THS
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SIXD_THS_80_degree 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SIXD_THS_70_degree 		 = 0x20,
+	LSM6DS3_ACC_GYRO_SIXD_THS_60_degree 		 = 0x40,
+	LSM6DS3_ACC_GYRO_SIXD_THS_50_degree 		 = 0x60,
+} LSM6DS3_ACC_GYRO_SIXD_THS_t;
+
+/*******************************************************************************
+* Register      : INT_DUR2
+* Address       : 0X5A
+* Bit Group Name: SHOCK
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_SHOCK_MASK  	0x03
+#define  	LSM6DS3_ACC_GYRO_SHOCK_POSITION  	0
+
+/*******************************************************************************
+* Register      : INT_DUR2
+* Address       : 0X5A
+* Bit Group Name: QUIET
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_QUIET_MASK  	0x0C
+#define  	LSM6DS3_ACC_GYRO_QUIET_POSITION  	2
+
+/*******************************************************************************
+* Register      : INT_DUR2
+* Address       : 0X5A
+* Bit Group Name: DUR
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_DUR_MASK  	0xF0
+#define  	LSM6DS3_ACC_GYRO_DUR_POSITION  	4
+
+/*******************************************************************************
+* Register      : WAKE_UP_THS
+* Address       : 0X5B
+* Bit Group Name: WK_THS
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_WK_THS_MASK  	0x3F
+#define  	LSM6DS3_ACC_GYRO_WK_THS_POSITION  	0
+
+/*******************************************************************************
+* Register      : WAKE_UP_THS
+* Address       : 0X5B
+* Bit Group Name: INACTIVITY_ON
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INACTIVITY_ON_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INACTIVITY_ON_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_INACTIVITY_ON_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_THS
+* Address       : 0X5B
+* Bit Group Name: SINGLE_DOUBLE_TAP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_SINGLE_DOUBLE_TAP_DOUBLE_TAP 		 = 0x00,
+	LSM6DS3_ACC_GYRO_SINGLE_DOUBLE_TAP_SINGLE_TAP 		 = 0x80,
+} LSM6DS3_ACC_GYRO_SINGLE_DOUBLE_TAP_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_DUR
+* Address       : 0X5C
+* Bit Group Name: SLEEP_DUR
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_SLEEP_DUR_MASK  	0x0F
+#define  	LSM6DS3_ACC_GYRO_SLEEP_DUR_POSITION  	0
+
+/*******************************************************************************
+* Register      : WAKE_UP_DUR
+* Address       : 0X5C
+* Bit Group Name: TIMER_HR
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_TIMER_HR_6_4ms 		 = 0x00,
+	LSM6DS3_ACC_GYRO_TIMER_HR_25us 		 = 0x10,
+} LSM6DS3_ACC_GYRO_TIMER_HR_t;
+
+/*******************************************************************************
+* Register      : WAKE_UP_DUR
+* Address       : 0X5C
+* Bit Group Name: WAKE_DUR
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_WAKE_DUR_MASK  	0x60
+#define  	LSM6DS3_ACC_GYRO_WAKE_DUR_POSITION  	5
+
+/*******************************************************************************
+* Register      : FREE_FALL
+* Address       : 0X5D
+* Bit Group Name: FF_DUR
+* Permission    : RW
+*******************************************************************************/
+#define  	LSM6DS3_ACC_GYRO_FF_FREE_FALL_DUR_MASK  	0xF8
+#define  	LSM6DS3_ACC_GYRO_FF_FREE_FALL_DUR_POSITION  	3
+#define  	LSM6DS3_ACC_GYRO_FF_WAKE_UP_DUR_MASK  	0x80
+#define  	LSM6DS3_ACC_GYRO_FF_WAKE_UP_DUR_POSITION  	7
+
+
+/*******************************************************************************
+* Register      : FREE_FALL
+* Address       : 0X5D
+* Bit Group Name: FF_THS
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_FF_THS_5 		 = 0x00,
+	LSM6DS3_ACC_GYRO_FF_THS_7 		 = 0x01,
+	LSM6DS3_ACC_GYRO_FF_THS_8 		 = 0x02,
+	LSM6DS3_ACC_GYRO_FF_THS_10 		 = 0x03,
+	LSM6DS3_ACC_GYRO_FF_THS_11 		 = 0x04,
+	LSM6DS3_ACC_GYRO_FF_THS_13 		 = 0x05,
+	LSM6DS3_ACC_GYRO_FF_THS_15 		 = 0x06,
+	LSM6DS3_ACC_GYRO_FF_THS_16 		 = 0x07,
+} LSM6DS3_ACC_GYRO_FF_THS_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_TIMER
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_TIMER_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_TIMER_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_INT1_TIMER_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_TILT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_TILT_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_TILT_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_INT1_TILT_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_6D
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_6D_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_6D_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_INT1_6D_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_TAP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_TAP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_TAP_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_INT1_TAP_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_FF
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_FF_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_FF_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_INT1_FF_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_WU
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_WU_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_WU_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_INT1_WU_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_SINGLE_TAP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_SINGLE_TAP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_SINGLE_TAP_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_INT1_SINGLE_TAP_t;
+
+/*******************************************************************************
+* Register      : MD1_CFG
+* Address       : 0X5E
+* Bit Group Name: INT1_SLEEP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT1_SLEEP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT1_SLEEP_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_INT1_SLEEP_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_TIMER
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_TIMER_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_TIMER_ENABLED 		 = 0x01,
+} LSM6DS3_ACC_GYRO_INT2_TIMER_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_TILT
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_TILT_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_TILT_ENABLED 		 = 0x02,
+} LSM6DS3_ACC_GYRO_INT2_TILT_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_6D
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_6D_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_6D_ENABLED 		 = 0x04,
+} LSM6DS3_ACC_GYRO_INT2_6D_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_TAP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_TAP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_TAP_ENABLED 		 = 0x08,
+} LSM6DS3_ACC_GYRO_INT2_TAP_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_FF
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_FF_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_FF_ENABLED 		 = 0x10,
+} LSM6DS3_ACC_GYRO_INT2_FF_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_WU
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_WU_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_WU_ENABLED 		 = 0x20,
+} LSM6DS3_ACC_GYRO_INT2_WU_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_SINGLE_TAP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_SINGLE_TAP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_SINGLE_TAP_ENABLED 		 = 0x40,
+} LSM6DS3_ACC_GYRO_INT2_SINGLE_TAP_t;
+
+/*******************************************************************************
+* Register      : MD2_CFG
+* Address       : 0X5F
+* Bit Group Name: INT2_SLEEP
+* Permission    : RW
+*******************************************************************************/
+typedef enum {
+	LSM6DS3_ACC_GYRO_INT2_SLEEP_DISABLED 		 = 0x00,
+	LSM6DS3_ACC_GYRO_INT2_SLEEP_ENABLED 		 = 0x80,
+} LSM6DS3_ACC_GYRO_INT2_SLEEP_t;
+
+
+
+
+#define APP_TIMER_PRESCALER      0                      /**< Value of the RTC1 PRESCALER register. */
+#define APP_TIMER_MAX_TIMERS     BSP_APP_TIMERS_NUMBER  /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_OP_QUEUE_SIZE  2                      /**< Size of timer operation queues. */
+
+#define DELAY_MS                 1000                /**< Timer Delay in milli-seconds. */
+
+#define TX_RX_BUF_LENGTH_CUSTOM  2                  //Added for AS3911 read register command
+
+
+
+#if (SPI0_ENABLED == 1)
+    static const nrf_drv_spi_t m_spi_master = NRF_DRV_SPI_INSTANCE(0);
+#elif (SPI1_ENABLED == 1)
+    static const nrf_drv_spi_t m_spi_master = NRF_DRV_SPI_INSTANCE(1);
+#elif (SPI2_ENABLED == 1)
+    static const nrf_drv_spi_t m_spi_master = NRF_DRV_SPI_INSTANCE(2);
+#else
+    #error "No SPI enabled."
+#endif
+
+
+static volatile bool m_transfer_completed = true; /**< A flag to inform about completed transfer. */
+
+//bluetooth uart
+#define IS_SRVC_CHANGED_CHARACT_PRESENT 0                                           /**< Include the service_changed characteristic. If not enabled, the server's database cannot be changed for the lifetime of the device. */
+
+#define DEVICE_NAME                     "Nordic_UART"                               /**< Name of device. Will be included in the advertising data. */
+#define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN                  /**< UUID type for the Nordic UART Service (vendor specific). */
+
+#define APP_ADV_INTERVAL                64                                          /**< The advertising interval (in units of 0.625 ms. This value corresponds to 40 ms). */
+#define APP_ADV_TIMEOUT_IN_SECONDS      180                                         /**< The advertising timeout (in units of seconds). */
+
+#define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
+#define APP_TIMER_MAX_TIMERS_BLE       (2 + BSP_APP_TIMERS_NUMBER)                 /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_OP_QUEUE_SIZE_BLE    4                                           /**< Size of timer operation queues. */
+
+#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(20, UNIT_1_25_MS)             /**< Minimum acceptable connection interval (20 ms), Connection interval uses 1.25 ms units. */
+#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(75, UNIT_1_25_MS)             /**< Maximum acceptable connection interval (75 ms), Connection interval uses 1.25 ms units. */
+#define SLAVE_LATENCY                   0                                           /**< Slave latency. */
+#define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds), Supervision Timeout uses 10 ms units. */
+#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds). */
+#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
+#define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
+
+#define START_STRING                    "Start...\n"                                /**< The string that will be sent over the UART when the application starts. */
+
+#define DEAD_BEEF                       0xDEADBEEF                                  /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
+
+#define UART_TX_BUF_SIZE                256                                         /**< UART TX buffer size. */
+#define UART_RX_BUF_SIZE                256                                         /**< UART RX buffer size. */
+
+
+
+//bluetooth uart
+static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
+static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
+
+static ble_uuid_t                       m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};  /**< Universally unique service identifier. */
+
+
+
+/*-----------------------------------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------UART-----------------------------------------------------------*/
+/**@brief Function for assert macro callback.
+ *
+ * @details This function will be called in case of an assert in the SoftDevice.
+ *
+ * @warning This handler is an example only and does not fit a final product. You need to analyse 
+ *          how your product is supposed to react in case of Assert.
+ * @warning On assert from the SoftDevice, the system can only recover on reset.
+ *
+ * @param[in] line_num    Line number of the failing ASSERT call.
+ * @param[in] p_file_name File name of the failing ASSERT call.
+ */
+void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
+{
+    app_error_handler(DEAD_BEEF, line_num, p_file_name);
+}
+
+
+/**@brief Function for the GAP initialization.
+ *
+ * @details This function will set up all the necessary GAP (Generic Access Profile) parameters of 
+ *          the device. It also sets the permissions and appearance.
+ */
+static void gap_params_init(void)
+{
+    uint32_t                err_code_uart;
+    ble_gap_conn_params_t   gap_conn_params;
+    ble_gap_conn_sec_mode_t sec_mode;
+
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
+    
+    err_code_uart = sd_ble_gap_device_name_set(&sec_mode,
+                                          (const uint8_t *) DEVICE_NAME,
+                                          strlen(DEVICE_NAME));
+    APP_ERROR_CHECK(err_code_uart);
+
+    memset(&gap_conn_params, 0, sizeof(gap_conn_params));
+
+    gap_conn_params.min_conn_interval = MIN_CONN_INTERVAL;
+    gap_conn_params.max_conn_interval = MAX_CONN_INTERVAL;
+    gap_conn_params.slave_latency     = SLAVE_LATENCY;
+    gap_conn_params.conn_sup_timeout  = CONN_SUP_TIMEOUT;
+
+    err_code_uart = sd_ble_gap_ppcp_set(&gap_conn_params);
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+/**@brief Function for handling the data from the Nordic UART Service.
+ *
+ * @details This function will process the data received from the Nordic UART BLE Service and send
+ *          it to the UART module.
+ *
+ * @param[in] p_nus    Nordic UART Service structure.
+ * @param[in] p_data   Data to be send to UART module.
+ * @param[in] length   Length of the data.
+ */
+/**@snippet [Handling the data received over BLE] */
+static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t length)
+{
+    for (uint32_t i = 0; i < length; i++)
+    {
+        while(app_uart_put(p_data[i]) != NRF_SUCCESS);
+    }
+    while(app_uart_put('\n') != NRF_SUCCESS);
+}
+/**@snippet [Handling the data received over BLE] */
+
+
+/**@brief Function for initializing services that will be used by the application.
+ */
+static void services_init(void)
+{
+    uint32_t       err_code_uart;
+    ble_nus_init_t nus_init;
+    
+    memset(&nus_init, 0, sizeof(nus_init));
+
+    nus_init.data_handler = nus_data_handler;
+    
+    err_code_uart = ble_nus_init(&m_nus, &nus_init);
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+/**@brief Function for handling an event from the Connection Parameters Module.
+ *
+ * @details This function will be called for all events in the Connection Parameters Module
+ *          which are passed to the application.
+ *
+ * @note All this function does is to disconnect. This could have been done by simply setting
+ *       the disconnect_on_fail config parameter, but instead we use the event handler
+ *       mechanism to demonstrate its use.
+ *
+ * @param[in] p_evt  Event received from the Connection Parameters Module.
+ */
+static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
+{
+    uint32_t err_code_uart;
+    
+    if(p_evt->evt_type == BLE_CONN_PARAMS_EVT_FAILED)
+    {
+        err_code_uart = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
+        APP_ERROR_CHECK(err_code_uart);
+    }
+}
+
+
+/**@brief Function for handling errors from the Connection Parameters module.
+ *
+ * @param[in] nrf_error  Error code containing information about what went wrong.
+ */
+static void conn_params_error_handler(uint32_t nrf_error)
+{
+    APP_ERROR_HANDLER(nrf_error);
+}
+
+
+/**@brief Function for initializing the Connection Parameters module.
+ */
+static void conn_params_init(void)
+{
+    uint32_t               err_code_uart;
+    ble_conn_params_init_t cp_init;
+    
+    memset(&cp_init, 0, sizeof(cp_init));
+
+    cp_init.p_conn_params                  = NULL;
+    cp_init.first_conn_params_update_delay = FIRST_CONN_PARAMS_UPDATE_DELAY;
+    cp_init.next_conn_params_update_delay  = NEXT_CONN_PARAMS_UPDATE_DELAY;
+    cp_init.max_conn_params_update_count   = MAX_CONN_PARAMS_UPDATE_COUNT;
+    cp_init.start_on_notify_cccd_handle    = BLE_GATT_HANDLE_INVALID;
+    cp_init.disconnect_on_fail             = false;
+    cp_init.evt_handler                    = on_conn_params_evt;
+    cp_init.error_handler                  = conn_params_error_handler;
+    
+    err_code_uart = ble_conn_params_init(&cp_init);
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+/**@brief Function for putting the chip into sleep mode.
+ *
+ * @note This function will not return.
+ */
+static void sleep_mode_enter(void)
+{
+    uint32_t err_code_uart = bsp_indication_set(BSP_INDICATE_IDLE);
+    APP_ERROR_CHECK(err_code_uart);
+
+    // Prepare wakeup buttons.
+    err_code_uart = bsp_btn_ble_sleep_mode_prepare();
+    APP_ERROR_CHECK(err_code_uart);
+
+    // Go to system-off mode (this function will not return; wakeup will cause a reset).
+    err_code_uart = sd_power_system_off();
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+/**@brief Function for handling advertising events.
+ *
+ * @details This function will be called for advertising events which are passed to the application.
+ *
+ * @param[in] ble_adv_evt  Advertising event.
+ */
+static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
+{
+    uint32_t err_code_uart;
+
+    switch (ble_adv_evt)
+    {
+        case BLE_ADV_EVT_FAST:
+            err_code_uart = bsp_indication_set(BSP_INDICATE_ADVERTISING);
+            APP_ERROR_CHECK(err_code_uart);
+            break;
+        case BLE_ADV_EVT_IDLE:
+            sleep_mode_enter();
+            break;
+        default:
+            break;
+    }
+}
+
+
+/**@brief Function for the Application's S110 SoftDevice event handler.
+ *
+ * @param[in] p_ble_evt S110 SoftDevice event.
+ */
+static void on_ble_evt(ble_evt_t * p_ble_evt)
+{
+    uint32_t                         err_code_uart;
+    
+    switch (p_ble_evt->header.evt_id)
+    {
+        case BLE_GAP_EVT_CONNECTED:
+            err_code_uart = bsp_indication_set(BSP_INDICATE_CONNECTED);
+            APP_ERROR_CHECK(err_code_uart);
+            m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+            break;
+            
+        case BLE_GAP_EVT_DISCONNECTED:
+            err_code_uart = bsp_indication_set(BSP_INDICATE_IDLE);
+            APP_ERROR_CHECK(err_code_uart);
+            m_conn_handle = BLE_CONN_HANDLE_INVALID;
+            break;
+
+        case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
+            // Pairing not supported
+            err_code_uart = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
+            APP_ERROR_CHECK(err_code_uart);
+            break;
+
+        case BLE_GATTS_EVT_SYS_ATTR_MISSING:
+            // No system attributes have been stored.
+            err_code_uart = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0, 0);
+            APP_ERROR_CHECK(err_code_uart);
+            break;
+
+        default:
+            // No implementation needed.
+            break;
+    }
+}
+
+
+/**@brief Function for dispatching a S110 SoftDevice event to all modules with a S110 SoftDevice 
+ *        event handler.
+ *
+ * @details This function is called from the S110 SoftDevice event interrupt handler after a S110 
+ *          SoftDevice event has been received.
+ *
+ * @param[in] p_ble_evt  S110 SoftDevice event.
+ */
+static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
+{
+    ble_conn_params_on_ble_evt(p_ble_evt);
+    ble_nus_on_ble_evt(&m_nus, p_ble_evt);
+    on_ble_evt(p_ble_evt);
+    ble_advertising_on_ble_evt(p_ble_evt);
+    bsp_btn_ble_on_ble_evt(p_ble_evt);
+    
+}
+
+
+/**@brief Function for the S110 SoftDevice initialization.
+ *
+ * @details This function initializes the S110 SoftDevice and the BLE event interrupt.
+ */
+static void ble_stack_init(void)
+{
+    uint32_t err_code_uart;
+    
+    // Initialize SoftDevice.
+    SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_XTAL_20_PPM, NULL);
+
+    // Enable BLE stack.
+    ble_enable_params_t ble_enable_params;
+    memset(&ble_enable_params, 0, sizeof(ble_enable_params));
+#if (defined(S130) || defined(S132))
+    ble_enable_params.gatts_enable_params.attr_tab_size   = BLE_GATTS_ATTR_TAB_SIZE_DEFAULT;
+#endif
+    ble_enable_params.gatts_enable_params.service_changed = IS_SRVC_CHANGED_CHARACT_PRESENT;
+    err_code_uart = sd_ble_enable(&ble_enable_params);
+    APP_ERROR_CHECK(err_code_uart);
+    
+    // Subscribe for BLE events.
+    err_code_uart = softdevice_ble_evt_handler_set(ble_evt_dispatch);
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+/**@brief Function for handling events from the BSP module.
+ *
+ * @param[in]   event   Event generated by button press.
+ */
+void bsp_event_handler(bsp_event_t event)
+{
+    uint32_t err_code_uart;
+    switch (event)
+    {
+        case BSP_EVENT_SLEEP:
+            sleep_mode_enter();
+            break;
+
+        case BSP_EVENT_DISCONNECT:
+            err_code_uart = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+            if (err_code_uart != NRF_ERROR_INVALID_STATE)
+            {
+                APP_ERROR_CHECK(err_code_uart);
+            }
+            break;
+
+        case BSP_EVENT_WHITELIST_OFF:
+            err_code_uart = ble_advertising_restart_without_whitelist();
+            if (err_code_uart != NRF_ERROR_INVALID_STATE)
+            {
+                APP_ERROR_CHECK(err_code_uart);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+
+/**@brief   Function for handling app_uart events.
+ *
+ * @details This function will receive a single character from the app_uart module and append it to 
+ *          a string. The string will be be sent over BLE when the last character received was a 
+ *          'new line' i.e '\n' (hex 0x0D) or if the string has reached a length of 
+ *          @ref NUS_MAX_DATA_LENGTH.
+ */
+/**@snippet [Handling the data received over UART] */
+void uart_event_handle(app_uart_evt_t * p_event)
+{
+    static uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
+    static uint8_t index = 0;
+    uint32_t       err_code_uart;
+
+    switch (p_event->evt_type)
+    {
+        case APP_UART_DATA_READY:
+            UNUSED_VARIABLE(app_uart_get(&data_array[index]));
+            index++;
+
+            if ((data_array[index - 1] == '\n') || (index >= (BLE_NUS_MAX_DATA_LEN)))
+            {
+                err_code_uart = ble_nus_string_send(&m_nus, data_array, index);
+                if (err_code_uart != NRF_ERROR_INVALID_STATE)
+                {
+                    APP_ERROR_CHECK(err_code_uart);
+                }
+                
+                index = 0;
+            }
+            break;
+
+        case APP_UART_COMMUNICATION_ERROR:
+            APP_ERROR_HANDLER(p_event->data.error_communication);
+            break;
+
+        case APP_UART_FIFO_ERROR:
+            APP_ERROR_HANDLER(p_event->data.error_code);
+            break;
+
+        default:
+            break;
+    }
+}
+/**@snippet [Handling the data received over UART] */
+
+
+/**@brief  Function for initializing the UART module.
+ */
+/**@snippet [UART Initialization] */
+static void uart_init(void)
+{
+    uint32_t                     err_code_uart;
+    const app_uart_comm_params_t comm_params =
+    {
+        RX_PIN_NUMBER,
+        TX_PIN_NUMBER,
+        RTS_PIN_NUMBER,
+        CTS_PIN_NUMBER,
+        APP_UART_FLOW_CONTROL_ENABLED,
+        false,
+        UART_BAUDRATE_BAUDRATE_Baud38400
+    };
+
+    APP_UART_FIFO_INIT( &comm_params,
+                       UART_RX_BUF_SIZE,
+                       UART_TX_BUF_SIZE,
+                       uart_event_handle,
+                       APP_IRQ_PRIORITY_LOW,
+                       err_code_uart);
+    APP_ERROR_CHECK(err_code_uart);
+}
+/**@snippet [UART Initialization] */
+
+
+/**@brief Function for initializing the Advertising functionality.
+ */
+static void advertising_init(void)
+{
+    uint32_t      err_code_uart;
+    ble_advdata_t advdata;
+    ble_advdata_t scanrsp;
+
+    // Build advertising data struct to pass into @ref ble_advertising_init.
+    memset(&advdata, 0, sizeof(advdata));
+    advdata.name_type          = BLE_ADVDATA_FULL_NAME;
+    advdata.include_appearance = false;
+    advdata.flags              = BLE_GAP_ADV_FLAGS_LE_ONLY_LIMITED_DISC_MODE;
+
+    memset(&scanrsp, 0, sizeof(scanrsp));
+    scanrsp.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+    scanrsp.uuids_complete.p_uuids  = m_adv_uuids;
+
+    ble_adv_modes_config_t options = {0};
+    options.ble_adv_fast_enabled  = BLE_ADV_FAST_ENABLED;
+    options.ble_adv_fast_interval = APP_ADV_INTERVAL;
+    options.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
+
+    err_code_uart = ble_advertising_init(&advdata, &scanrsp, &options, on_adv_evt, NULL);
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+/**@brief Function for initializing buttons and leds.
+ *
+ * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
+ */
+static void buttons_leds_init(bool * p_erase_bonds)
+{
+    bsp_event_t startup_event;
+
+    uint32_t err_code_uart = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
+                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), 
+                                 bsp_event_handler);
+    APP_ERROR_CHECK(err_code_uart);
+
+    err_code_uart = bsp_btn_ble_init(NULL, &startup_event);
+    APP_ERROR_CHECK(err_code_uart);
+
+    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+}
+
+
+/**@brief Function for placing the application in low power state while waiting for events.
+ */
+static void power_manage(void)
+{
+    uint32_t err_code_uart = sd_app_evt_wait();
+    APP_ERROR_CHECK(err_code_uart);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**@brief Function for error handling, which is called when an error has occurred.
+ *
+ * @param[in] error_code  Error code supplied to the handler.
+ * @param[in] line_num    Line number where the handler is called.
+ * @param[in] p_file_name Pointer to the file name.
+ */
+void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
+{
+    UNUSED_VARIABLE(bsp_indication_set(BSP_INDICATE_FATAL_ERROR));
+
+    for (;;)
+    {
+        // No implementation needed.
+    }
+}
+
+
+/**@brief Function for checking if data coming from a SPI slave are valid.
+ *
+ * @param[in] p_buf     A pointer to a data buffer.
+ * @param[in] len       A length of the data buffer.
+ * 
+ * @note Expected ASCII characters from: 'a' to: ('a' + len - 1).
+ *
+ * @retval true     Data are valid.
+ * @retval false    Data are invalid.
+ */
+
+/**@brief Function for SPI master event callback.
+ *
+ * Upon receiving an SPI transaction complete event, checks if received data are valid.
+ *
+ * @param[in] spi_master_evt    SPI master driver event.
+ */
+static void spi_master_event_handler(nrf_drv_spi_event_t event)
+{
+    uint32_t err_code = NRF_SUCCESS;
+    bool result = false;
+
+    switch (event)
+    {
+        case NRF_DRV_SPI_EVENT_DONE:
+            // Check if data are valid.
+            //result = buf_check(m_rx_data, TX_RX_BUF_LENGTH);
+            //APP_ERROR_CHECK_BOOL(result);
+
+            err_code = bsp_indication_set(BSP_INDICATE_RCV_OK);
+            APP_ERROR_CHECK(err_code);
+
+            // Inform application that transfer is completed.
+            m_transfer_completed = true;
+            break;
+
+        default:
+            // No implementation needed.
+            break;
+    }
+}
+
+
+/**@brief The function initializes TX buffer to values to be sent and clears RX buffer.
+ *
+ * @note Function initializes TX buffer to values from 'A' to ('A' + len - 1)
+ *       and clears RX buffer (fill by 0).
+ *
+ * @param[in] p_tx_data     A pointer to a buffer TX.
+ * @param[in] p_rx_data     A pointer to a buffer RX.
+ * @param[in] len           A length of the data buffers.
+ */
+static void init_buffers(uint8_t * const p_tx_data,
+                         uint8_t * const p_rx_data,
+                         const uint16_t  len)
+{
+    uint16_t i;
+
+    for (i = 0; i < len; i++)
+    {
+        p_tx_data[i] = (uint8_t)('A' + i);
+        p_rx_data[i] = 0;
+    }
+}
+
+
+/**@brief Functions prepares buffers and starts data transfer.
+ *
+ * @param[in] p_tx_data     A pointer to a buffer TX.
+ * @param[in] p_rx_data     A pointer to a buffer RX.
+ * @param[in] len           A length of the data buffers.
+ */
+static void spi_send_recv(uint8_t * const p_tx_data,
+                          uint8_t * const p_rx_data,
+                          const uint16_t  len)
+{
+    // Initalize buffers.
+   // init_buffers(p_tx_data, p_rx_data, len); //comment this out since I want to read a register
+
+    // Start transfer.
+    uint32_t err_code = nrf_drv_spi_transfer(&m_spi_master,
+        p_tx_data, len, p_rx_data, len);
+    APP_ERROR_CHECK(err_code);
+  nrf_delay_ms(100); //not having this delay allows the function to return at least once
+}
+
+
+/**@brief Function for initializing bsp module.
+ */
+void bsp_configuration()
+{
+    uint32_t err_code = NRF_SUCCESS;
+
+    NRF_CLOCK->LFCLKSRC            = (CLOCK_LFCLKSRC_SRC_Xtal << CLOCK_LFCLKSRC_SRC_Pos);
+    NRF_CLOCK->EVENTS_LFCLKSTARTED = 0;
+    NRF_CLOCK->TASKS_LFCLKSTART    = 1;
+
+    while (NRF_CLOCK->EVENTS_LFCLKSTARTED == 0)
+    {
+        // Do nothing.
+    }
+
+    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, NULL);
+
+    err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
+    APP_ERROR_CHECK(err_code);
+}
+uint8_t SPIReadReg(uint8_t addr)
+{
+	  uint8_t temp[2];
+	  uint8_t temp_rec[2]={0};
+	
+	  temp[0] = addr | READ_MODE ;
+	  temp[1] = 0;
+		
+		nrf_drv_gpiote_out_clear(30);
+		spi_send_recv(temp, temp_rec, 2);
+	  
+
+		
+	  if (m_transfer_completed){
+			
+			m_transfer_completed=false;
+			nrf_delay_ms(1);
+		  nrf_drv_gpiote_out_set(30);
+		}
+		
+		nrf_delay_ms(1);
+		
+		return temp_rec[1];
+}
+void SPIWriteReg(uint8_t addr, uint8_t value)
+{
+	  uint8_t temp[2];
+    uint8_t temp_rec[2]={0};
+
+    temp[0] = addr & WRITE_MODE;
+		temp[1] = value;
+
+    nrf_drv_gpiote_out_clear(30);		
+		spi_send_recv(temp, temp_rec, 2);
+
+		
+		if (m_transfer_completed){
+			m_transfer_completed=false;
+			nrf_delay_ms(1);
+		  nrf_drv_gpiote_out_set(30);
+		}
+		
+		nrf_delay_ms(1);
+	
+}
+
+void imuset()
+{
+	 uint8_t dataToWrite = 0;
+	 int gyroRange= 2000, gyroSampleRate =416, gyroBandWidth =400,gyroFifoEnabled=1,gyroFifoDecimation=1;
+	 int accelODROff=1, accelRange=2, accelSampleRate=416, accelBandWidth=100, accelFifoEnabled=1, accelFifoDecimation=1;
+	 
+	//set acc
+	 switch (accelBandWidth) 
+	{
+		case 50:
+			dataToWrite |= LSM6DS3_ACC_GYRO_BW_XL_50Hz;
+			break;
+		case 100:
+			dataToWrite |= LSM6DS3_ACC_GYRO_BW_XL_100Hz;
+			break;
+		case 200:
+			dataToWrite |= LSM6DS3_ACC_GYRO_BW_XL_200Hz;
+			break;
+		default:  //set default case to max passthrough
+		case 400:
+			dataToWrite |= LSM6DS3_ACC_GYRO_BW_XL_400Hz;
+			break;
+	 }
+		//Next, patch in full scale
+		switch (accelRange) 
+	{
+		case 2:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_XL_2g;
+			break;
+		case 4:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_XL_4g;
+			break;
+		case 8:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_XL_8g;
+			break;
+		default:  //set default case to 16(max)
+		case 16:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_XL_16g;
+			break;
+	}
+		//Lastly, patch in accelerometer ODR
+		switch (accelSampleRate) 
+	{
+		case 13:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_13Hz;
+			break;
+		case 26:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_26Hz;
+			break;
+		case 52:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_52Hz;
+			break;
+		default:  //Set default to 104
+		case 104:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_104Hz;
+			break;
+		case 208:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_208Hz;
+			break;
+		case 416:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_416Hz;
+			break;
+		case 833:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_833Hz;
+			break;
+		case 1660:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_1660Hz;
+			break;
+		case 3330:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_3330Hz;
+			break;
+		case 6660:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_6660Hz;
+			break;
+		case 13330:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_13330Hz;
+			break;
+	}
+		SPIWriteReg(LSM6DS3_ACC_GYRO_CTRL1_XL,dataToWrite);
+	
+	  //set ord bit
+	  dataToWrite=SPIReadReg(LSM6DS3_ACC_GYRO_CTRL4_C);
+	  dataToWrite |= LSM6DS3_ACC_GYRO_BW_SCAL_ODR_ENABLED;
+	  SPIWriteReg(LSM6DS3_ACC_GYRO_CTRL4_C,dataToWrite);
+	
+	//set gyro
+		dataToWrite = 0;
+	switch (gyroRange) {
+		case 125:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_125_ENABLED;
+			break;
+		case 245:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_G_245dps;
+			break;
+		case 500:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_G_500dps;
+			break;
+		case 1000:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_G_1000dps;
+			break;
+		default:  //Default to full 2000DPS range
+		case 2000:
+			dataToWrite |= LSM6DS3_ACC_GYRO_FS_G_2000dps;
+			break;
+		}
+		//Lastly, patch in gyro ODR
+		switch (gyroSampleRate) {
+		case 13:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_13Hz;
+			break;
+		case 26:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_26Hz;
+			break;
+		case 52:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_52Hz;
+			break;
+		default:  //Set default to 104
+		case 104:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_104Hz;
+			break;
+		case 208:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_208Hz;
+			break;
+		case 416:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_416Hz;
+			break;
+		case 833:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_833Hz;
+			break;
+		case 1660:
+			dataToWrite |= LSM6DS3_ACC_GYRO_ODR_G_1660Hz;
+			break;
+		}
+	    SPIWriteReg(LSM6DS3_ACC_GYRO_CTRL2_G, dataToWrite);
+}
+
+
+
+void accRD_XYZ(int16_t *x,int16_t *y,int16_t *z)
+{
+    uint8_t buf;
+	  int8_t x0,x1,y0,y1,z0,z1;
+	
+	  buf=LSM6DS3_ACC_GYRO_OUTX_L_XL;
+	  x0=SPIReadReg(buf);
+	
+	  buf=LSM6DS3_ACC_GYRO_OUTX_H_XL;
+	  x1=SPIReadReg(buf);
+	
+    buf=LSM6DS3_ACC_GYRO_OUTY_L_XL;
+	  y0=SPIReadReg(buf);
+	
+	  buf=LSM6DS3_ACC_GYRO_OUTY_H_XL;
+	  y1=SPIReadReg(buf);
+	
+    buf=LSM6DS3_ACC_GYRO_OUTZ_L_XL;
+	  z0=SPIReadReg(buf);
+	
+    buf=LSM6DS3_ACC_GYRO_OUTZ_H_XL;
+	  z1=SPIReadReg(buf);
+	
+  *x= ((((int16_t)x1) << 8) + (int16_t)x0); //Xaccumulate = Xaccumulate + (xhi*256 + xlo)
+  *y= ((((int16_t)y1) << 8) + (int16_t)y0);
+  *z= ((((int16_t)z1) << 8) + (int16_t)z0);
+}
+void gyroRD_XYZ(int16_t *x,int16_t *y,int16_t *z)
+{
+    uint8_t buf;
+	  int8_t x0,x1,y0,y1,z0,z1;
+	
+	  buf=LSM6DS3_ACC_GYRO_OUTX_L_G;
+	  x0=SPIReadReg(buf);
+	
+	  buf=LSM6DS3_ACC_GYRO_OUTX_H_G;
+	  x1=SPIReadReg(buf);
+	
+    buf=LSM6DS3_ACC_GYRO_OUTY_L_G;
+	  y0=SPIReadReg(buf);
+	
+	  buf=LSM6DS3_ACC_GYRO_OUTY_H_G;
+	  y1=SPIReadReg(buf);
+	
+    buf=LSM6DS3_ACC_GYRO_OUTZ_L_G;
+	  z0=SPIReadReg(buf);
+	
+    buf=LSM6DS3_ACC_GYRO_OUTZ_H_G;
+	  z1=SPIReadReg(buf);
+	
+  *x= ((((int16_t)x1) << 8) + (int16_t)x0); //Xaccumulate = Xaccumulate + (xhi*256 + xlo)
+  *y= ((((int16_t)y1) << 8) + (int16_t)y0);
+  *z= ((((int16_t)z1) << 8) + (int16_t)z0);
+}
+void accreal_xyz(int32_t *x,int32_t *y,int32_t *z)
+{
+	 int16_t x1,y1,z1;
+	accRD_XYZ(&x1,&y1,&z1);
+	*x=(int32_t)x1 * 0.061f;
+	*y=(int32_t)y1 * 0.061f;
+	*z=(int32_t)z1 * 0.061f;
+}
+void gryoreal_xyz(int32_t *x,int32_t *y,int32_t *z)
+{
+	 int16_t x1,y1,z1;
+	gyroRD_XYZ(&x1,&y1,&z1);
+	*x=(int32_t)x1 * 70.0f;
+	*y=(int32_t)y1 * 70.0f;
+	*z=(int32_t)z1 * 70.0f;
+}
+ uint16_t Get_Angle(int32_t x,int32_t y,int32_t z,int dir)
+{
+    int32_t temp;
+    int32_t res=0;
+    
+    switch(dir)
+       {
+          case 0:// z angle
+              temp=z/sqrt((x*x+y*y));
+              res=atan(temp);
+              break;
+          case 1:// x angle
+              temp=x/sqrt((y*y+z*z));
+              res=atan(temp);
+              break;
+          case 2:// y angle
+              temp=y/sqrt((x*x+z*z));
+              res=atan(temp);
+              break;
+         }
+   return res*1800/3.14; //change it to degree
+}
+// convert acceleration value to angle
+
+/**@brief Function for application main entry. Does not return. */
+int main(void)
+{
+	  uint32_t err_code_uart;
+    bool erase_bonds;
+    uint8_t  start_string[] = START_STRING;
+
+    
+    // Initialize Bluetooth Uart
+    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS_BLE, APP_TIMER_OP_QUEUE_SIZE_BLE, false);
+    uart_init();
+    buttons_leds_init(&erase_bonds);
+    ble_stack_init();
+    gap_params_init();
+    services_init();
+    advertising_init();
+    conn_params_init();
+	
+    
+    printf("%s",start_string);
+	
+
+    err_code_uart = ble_advertising_start(BLE_ADV_MODE_FAST);
+    APP_ERROR_CHECK(err_code_uart);
+	
+	    
+	    int32_t ang;
+	    int32_t x1,y1,z1;
+	    int32_t x,y,z;
+      unsigned char reg = 0x00; //IC Identity Register
+      nrf_gpio_cfg_output(30); //for the CS pin
+      nrf_drv_gpiote_out_set(30);   //This should assert the CS for the SPI peripheral
+      
+		  m_transfer_completed = false;
+
+    // Setup bsp module.
+    bsp_configuration();
+
+    nrf_drv_spi_config_t const config =
+    {
+        #if (SPI0_ENABLED == 1)
+            .sck_pin  = SPIM0_SCK_PIN,
+            .mosi_pin = SPIM0_MOSI_PIN,
+            .miso_pin = SPIM0_MISO_PIN,
+            .ss_pin   = SPIM0_SS_PIN,
+        #elif (SPI1_ENABLED == 1)
+            .sck_pin  = SPIM1_SCK_PIN,
+            .mosi_pin = SPIM1_MOSI_PIN,
+            .miso_pin = SPIM1_MISO_PIN,
+            .ss_pin   = SPIM1_SS_PIN,
+        #elif (SPI2_ENABLED == 1)
+            .sck_pin  = SPIM2_SCK_PIN,
+            .mosi_pin = SPIM2_MOSI_PIN,
+            .miso_pin = SPIM2_MISO_PIN,
+            .ss_pin   = SPIM2_SS_PIN,
+        #endif
+        .irq_priority = APP_IRQ_PRIORITY_LOW,
+        .orc          = 0xCC,
+        .frequency    = NRF_DRV_SPI_FREQ_1M,
+        .mode         = NRF_DRV_SPI_MODE_0,
+        .bit_order    = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST,
+       .ss_pin       = NRF_DRV_SPI_PIN_NOT_USED, //added by DS - if not specified, the nrf_drv_spi_init() will set this to high, which is wrong, CS for AS3911 is active low
+    };
+		
+		
+    ret_code_t err_code = nrf_drv_spi_init(&m_spi_master, &config, spi_master_event_handler);
+    APP_ERROR_CHECK(err_code);
+		
+		//initial imu
+		 imuset();
+	while(1)
+	{		
+
+		//get acc value
+		accreal_xyz(&x, &y, &z);
+    ang=(int16_t)Get_Angle(x,y,z,0);
+		gryoreal_xyz(&x1,&y1,&z1);
+	  printf(" x value is %d \n", x);
+	  printf(" y value is %d \n", y);
+	  printf(" z value is %d \n", z);
+	 // SEGGER_RTT_printf(0, " x G_value is %d \n", x1);
+	 // SEGGER_RTT_printf(0, " y G_value is %d \n", y1);
+	 // SEGGER_RTT_printf(0, " z G_value is %d \n", z1);
+	}
+}
